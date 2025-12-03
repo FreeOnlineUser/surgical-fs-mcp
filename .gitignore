@@ -1,0 +1,16 @@
+# Build results
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Backup directories created by surgical-fs
+.surgicalfs_backup_*/
+
+# OS
+.DS_Store
+Thumbs.db
