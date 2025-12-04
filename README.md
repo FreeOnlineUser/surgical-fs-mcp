@@ -47,17 +47,26 @@ Directly ported from ClipMicro's `BackupManager`:
 
 ## Installation
 
-### Prerequisites
+### Quick Install (Pre-built)
+
+1. **Download** the latest release from [Releases](https://github.com/FreeOnlineUser/surgical-fs-mcp/releases)
+2. **Extract** the zip to a folder (e.g., `C:\Tools\surgical-fs-mcp\`)
+3. **Configure Claude Desktop** (see below)
+
+> **Note:** Requires [.NET 8.0 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) installed.
+
+### Build from Source
+
+#### Prerequisites
 - .NET 8.0 SDK
 - Claude Desktop
 
-### Build
+#### Build
 
 ```bash
 git clone https://github.com/FreeOnlineUser/surgical-fs-mcp.git
 cd surgical-fs-mcp
-dotnet restore
-dotnet build --configuration Release
+dotnet publish -c Release -o ./publish
 ```
 
 ### Configure Allowed Directories
@@ -83,12 +92,13 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json`:
 {
   "mcpServers": {
     "surgical_fs": {
-      "command": "dotnet",
-      "args": ["path/to/surgical-fs-mcp.dll"]
+      "command": "C:/Tools/surgical-fs-mcp/surgical-fs-mcp.exe"
     }
   }
 }
 ```
+
+> **Note:** Use forward slashes `/` or escaped backslashes `\\` in the path.
 
 Restart Claude Desktop after configuring.
 
