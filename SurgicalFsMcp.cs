@@ -427,7 +427,7 @@ namespace SurgicalFsMcp
 
                 if (result.Success)
                 {
-                    File.WriteAllText(absPath, result.NewContent, Encoding.UTF8);
+                    File.WriteAllText(absPath, result.NewContent, new UTF8Encoding(false));
                     backupManager.CleanupBackups();
                     return $"✅ Success: Edit applied using '{result.Strategy}' matching";
                 }
@@ -493,7 +493,7 @@ namespace SurgicalFsMcp
                 lines.RemoveRange(startIdx, count);
                 lines.InsertRange(startIdx, newLines);
 
-                File.WriteAllLines(absPath, lines, Encoding.UTF8);
+                File.WriteAllLines(absPath, lines, new UTF8Encoding(false));
                 backupManager.CleanupBackups();
 
                 return $"✅ Success: Replaced lines {start_line}-{end_line} ({count} lines) with {newLines.Length} new lines";
@@ -553,7 +553,7 @@ namespace SurgicalFsMcp
                     position = $"before line {line_number}";
                 }
 
-                File.WriteAllLines(absPath, lines, Encoding.UTF8);
+                File.WriteAllLines(absPath, lines, new UTF8Encoding(false));
                 backupManager.CleanupBackups();
 
                 return $"✅ Success: Inserted {newLines.Length} lines {position}";
@@ -610,7 +610,7 @@ namespace SurgicalFsMcp
                 int count = end_line - start_line + 1;
 
                 lines.RemoveRange(startIdx, count);
-                File.WriteAllLines(absPath, lines, Encoding.UTF8);
+                File.WriteAllLines(absPath, lines, new UTF8Encoding(false));
                 backupManager.CleanupBackups();
 
                 return $"✅ Success: Deleted lines {start_line}-{end_line} ({count} lines)";
@@ -767,7 +767,7 @@ namespace SurgicalFsMcp
                         return $"❌ Batch failed on {edits[i].Path}: {result.Reason}\n💡 All changes rolled back\n💡 Suggestion: {result.Suggestion}";
                     }
 
-                    File.WriteAllText(validatedPaths[i], result.NewContent, Encoding.UTF8);
+                    File.WriteAllText(validatedPaths[i], result.NewContent, new UTF8Encoding(false));
                     results.Add($"✅ {Path.GetFileName(edits[i].Path)}: {result.Strategy}");
                 }
 
