@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -81,9 +81,9 @@ namespace SurgicalFsMcp
     public class BackupManager : IDisposable
     {
         private string backupDirectory;
-        private Dictionary<string, string> backedUpFiles;
-        private HashSet<string> newlyCreatedFiles;
-        private HashSet<string> newlyCreatedDirectories;
+        private Dictionary<string, string> backedUpFiles; // original path -> backup path
+        private HashSet<string> newlyCreatedFiles; // track files created during transaction
+        private HashSet<string> newlyCreatedDirectories; // track directories created during transaction
         private DateTime backupTimestamp;
         private bool disposed = false;
 
@@ -103,18 +103,28 @@ namespace SurgicalFsMcp
                 string fullPath = Path.IsPathRooted(filePath) ? filePath : Path.Combine(workingDirectory, filePath);
                 string relativePath = GetRelativePath(workingDirectory, fullPath);
                 
+                // Only backup if file exists
                 if (!File.Exists(fullPath))
-                    return true;
+                {
+                    return true; // No backup needed for non-existent files
+                }
 
+                // Create backup directory if it doesn't exist
                 if (!Directory.Exists(backupDirectory))
+                {
                     Directory.CreateDirectory(backupDirectory);
+                }
 
+                // Create backup file path maintaining directory structure
                 string backupFilePath = Path.Combine(backupDirectory, relativePath);
-                string? backupFileDirectory = Path.GetDirectoryName(backupFilePath);
+                string backupFileDirectory = Path.GetDirectoryName(backupFilePath);
                 
                 if (!string.IsNullOrEmpty(backupFileDirectory) && !Directory.Exists(backupFileDirectory))
+                {
                     Directory.CreateDirectory(backupFileDirectory);
+                }
 
+                // Copy file to backup location
                 File.Copy(fullPath, backupFilePath, overwrite: true);
                 backedUpFiles[fullPath] = backupFilePath;
                 
@@ -132,6 +142,7 @@ namespace SurgicalFsMcp
             bool allRestored = true;
             var restorationErrors = new List<string>();
 
+            // Restore modified files from backup
             foreach (var kvp in backedUpFiles)
             {
                 try
@@ -141,9 +152,12 @@ namespace SurgicalFsMcp
 
                     if (File.Exists(backupPath))
                     {
-                        string? originalDirectory = Path.GetDirectoryName(originalPath);
+                        // Ensure directory exists
+                        string originalDirectory = Path.GetDirectoryName(originalPath);
                         if (!string.IsNullOrEmpty(originalDirectory) && !Directory.Exists(originalDirectory))
+                        {
                             Directory.CreateDirectory(originalDirectory);
+                        }
 
                         File.Copy(backupPath, originalPath, overwrite: true);
                     }
@@ -155,12 +169,16 @@ namespace SurgicalFsMcp
                 }
             }
 
+            // Delete newly created files
             foreach (string filePath in newlyCreatedFiles)
             {
                 try
                 {
                     if (File.Exists(filePath))
+                    {
                         File.Delete(filePath);
+                        System.Diagnostics.Debug.WriteLine($"Deleted newly created file during rollback: {filePath}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -169,19 +187,36 @@ namespace SurgicalFsMcp
                 }
             }
 
+            // Delete newly created directories (in reverse order - deepest first)
             var sortedDirectories = newlyCreatedDirectories.OrderByDescending(d => d.Length).ToList();
             foreach (string dirPath in sortedDirectories)
             {
                 try
                 {
-                    if (Directory.Exists(dirPath) && !Directory.EnumerateFileSystemEntries(dirPath).Any())
-                        Directory.Delete(dirPath);
+                    if (Directory.Exists(dirPath))
+                    {
+                        // Only delete if directory is empty
+                        if (!Directory.EnumerateFileSystemEntries(dirPath).Any())
+                        {
+                            Directory.Delete(dirPath);
+                            System.Diagnostics.Debug.WriteLine($"Deleted newly created empty directory during rollback: {dirPath}");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Skipped directory deletion (not empty): {dirPath}");
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
                     allRestored = false;
                     restorationErrors.Add($"Failed to delete newly created directory {dirPath}: {ex.Message}");
                 }
+            }
+
+            if (!allRestored)
+            {
+                System.Diagnostics.Debug.WriteLine($"Some files could not be restored: {string.Join("; ", restorationErrors)}");
             }
 
             return allRestored;
@@ -192,7 +227,9 @@ namespace SurgicalFsMcp
             try
             {
                 if (Directory.Exists(backupDirectory))
+                {
                     Directory.Delete(backupDirectory, recursive: true);
+                }
             }
             catch (Exception ex)
             {
@@ -200,8 +237,16 @@ namespace SurgicalFsMcp
             }
         }
 
-        public void TrackNewFile(string filePath) => newlyCreatedFiles.Add(filePath);
-        public void TrackNewDirectory(string directoryPath) => newlyCreatedDirectories.Add(directoryPath);
+        public void TrackNewFile(string filePath)
+        {
+            newlyCreatedFiles.Add(filePath);
+        }
+
+        public void TrackNewDirectory(string directoryPath)
+        {
+            newlyCreatedDirectories.Add(directoryPath);
+        }
+
         public int BackupCount => backedUpFiles.Count;
         public int NewFileCount => newlyCreatedFiles.Count;
         public int NewDirectoryCount => newlyCreatedDirectories.Count;
@@ -240,14 +285,14 @@ namespace SurgicalFsMcp
         {
             try
             {
-                // Strategy 1: Exact match
+                // Strategy 1: Exact match (original behavior)
                 if (content.Contains(find))
                 {
                     string newContent = content.Replace(find, replace);
                     return new UpdateResult { Success = true, Strategy = "exact_match", NewContent = newContent };
                 }
 
-                // Strategy 2: Normalize line endings
+                // Strategy 2: Normalize line endings and try again
                 string normalizedContent = content.Replace("\r\n", "\n").Replace("\r", "\n");
                 string normalizedFind = find.Replace("\r\n", "\n").Replace("\r", "\n");
 
@@ -257,7 +302,7 @@ namespace SurgicalFsMcp
                     return new UpdateResult { Success = true, Strategy = "line_ending_normalization", NewContent = newContent };
                 }
 
-                // Strategy 3: Trim whitespace
+                // Strategy 3: Trim whitespace from find pattern and try fuzzy matching
                 string trimmedFind = find.Trim();
                 if (trimmedFind.Length > 0 && normalizedContent.Contains(trimmedFind))
                 {
@@ -265,8 +310,8 @@ namespace SurgicalFsMcp
                     return new UpdateResult { Success = true, Strategy = "trimmed_whitespace", NewContent = newContent };
                 }
 
-                // Strategy 4: Tab normalization
-                string tabNormalizedContent = normalizedContent.Replace("\t", "    ");
+                // Strategy 4: Handle mixed tab/space indentation
+                string tabNormalizedContent = normalizedContent.Replace("\t", "    "); // 4 spaces per tab
                 string tabNormalizedFind = normalizedFind.Replace("\t", "    ");
 
                 if (tabNormalizedContent.Contains(tabNormalizedFind))
@@ -275,12 +320,13 @@ namespace SurgicalFsMcp
                     return new UpdateResult { Success = true, Strategy = "tab_normalization", NewContent = newContent };
                 }
 
-                // Strategy 5: Fuzzy whitespace
+                // Strategy 5: Try with space-normalized find (all whitespace -> single space)
                 string spaceNormalizedFind = Regex.Replace(trimmedFind, @"\s+", " ");
                 string spaceNormalizedContent = Regex.Replace(normalizedContent, @"\s+", " ");
 
                 if (spaceNormalizedContent.Contains(spaceNormalizedFind))
                 {
+                    // Find the original text in the content and replace it
                     string[] contentLines = normalizedContent.Split('\n');
                     string[] findLines = normalizedFind.Split('\n');
 
@@ -301,17 +347,20 @@ namespace SurgicalFsMcp
 
                         if (match)
                         {
+                            // Replace the matched lines
                             List<string> newLines = new List<string>(contentLines);
                             newLines.RemoveRange(i, findLines.Length);
+
                             string[] replaceLines = replace.Split('\n');
                             newLines.InsertRange(i, replaceLines);
+
                             string newContent = string.Join("\n", newLines);
                             return new UpdateResult { Success = true, Strategy = "fuzzy_whitespace", NewContent = newContent };
                         }
                     }
                 }
 
-                // Strategy 6: Partial line match
+                // Strategy 6: Partial line matching for single-line finds
                 if (!normalizedFind.Contains('\n'))
                 {
                     string[] contentLines = normalizedContent.Split('\n');
@@ -326,21 +375,38 @@ namespace SurgicalFsMcp
                     }
                 }
 
+                // All strategies failed - provide helpful error message
                 string reason = "Text not found in file";
                 string suggestion = "Check that the FIND text matches exactly (case-sensitive)";
 
                 if (find.Contains("\""))
+                {
                     suggestion = "Check quotes and formatting - FIND text must match exactly";
+                }
                 else if (find.Length < 5)
+                {
                     suggestion = "Try using a longer, more unique text pattern to find";
+                }
                 else if (find.Contains("\n"))
+                {
                     suggestion = "For multi-line FIND, ensure line breaks and indentation match exactly";
+                }
 
-                return new UpdateResult { Success = false, Reason = reason, Suggestion = suggestion };
+                return new UpdateResult
+                {
+                    Success = false,
+                    Reason = reason,
+                    Suggestion = suggestion
+                };
             }
             catch (Exception ex)
             {
-                return new UpdateResult { Success = false, Reason = $"Update error: {ex.Message}", Suggestion = "Check file permissions and try again" };
+                return new UpdateResult
+                {
+                    Success = false,
+                    Reason = $"Update error: {ex.Message}",
+                    Suggestion = "Check file permissions and try again"
+                };
             }
         }
     }
@@ -351,11 +417,12 @@ namespace SurgicalFsMcp
 
     public static class PathValidator
     {
-        // Configure allowed directories here - users should modify this list
+        // Configure allowed directories here
         private static readonly List<string> AllowedDirectories = new()
         {
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects"),
+            @"C:\Users\bradc\Documents\ClaudeWorkspace",
         };
 
         public static bool IsPathAllowed(string path)
@@ -418,9 +485,12 @@ namespace SurgicalFsMcp
                 if (!File.Exists(absPath))
                     return $"Error: File not found: {path}";
 
+                // Create backup before modification
                 backupManager = new BackupManager(workingDir);
                 if (!backupManager.CreateBackup(absPath, workingDir))
+                {
                     return "Error: Failed to create backup before modification";
+                }
 
                 string content = File.ReadAllText(absPath, Encoding.UTF8);
                 var result = MatchingEngine.FindAndReplace(content, find, replace);
@@ -428,17 +498,19 @@ namespace SurgicalFsMcp
                 if (result.Success)
                 {
                     File.WriteAllText(absPath, result.NewContent, new UTF8Encoding(false));
-                    backupManager.CleanupBackups();
+                    backupManager.CleanupBackups(); // Success - remove backup
                     return $"✅ Success: Edit applied using '{result.Strategy}' matching";
                 }
                 else
                 {
+                    // No changes made, cleanup backup
                     backupManager.CleanupBackups();
                     return $"❌ {result.Reason}\n💡 Suggestion: {result.Suggestion}";
                 }
             }
             catch (Exception ex)
             {
+                // Rollback on any error
                 if (backupManager != null && backupManager.BackupCount > 0)
                 {
                     backupManager.RestoreAllBackups(PathValidator.GetWorkingDirectory(path));
@@ -474,7 +546,9 @@ namespace SurgicalFsMcp
 
                 backupManager = new BackupManager(workingDir);
                 if (!backupManager.CreateBackup(absPath, workingDir))
+                {
                     return "Error: Failed to create backup before modification";
+                }
 
                 var lines = new List<string>(File.ReadAllLines(absPath, Encoding.UTF8));
                 int totalLines = lines.Count;
@@ -531,7 +605,9 @@ namespace SurgicalFsMcp
 
                 backupManager = new BackupManager(workingDir);
                 if (!backupManager.CreateBackup(absPath, workingDir))
+                {
                     return "Error: Failed to create backup before modification";
+                }
 
                 var lines = new List<string>(File.ReadAllLines(absPath, Encoding.UTF8));
                 var newLines = content.Split('\n');
@@ -594,7 +670,9 @@ namespace SurgicalFsMcp
 
                 backupManager = new BackupManager(workingDir);
                 if (!backupManager.CreateBackup(absPath, workingDir))
+                {
                     return "Error: Failed to create backup before modification";
+                }
 
                 var lines = new List<string>(File.ReadAllLines(absPath, Encoding.UTF8));
                 int totalLines = lines.Count;
@@ -734,6 +812,7 @@ namespace SurgicalFsMcp
                 if (edits == null || edits.Count == 0)
                     return "Error: No edits provided";
 
+                // Validate all paths first
                 var validatedPaths = new List<string>();
                 foreach (var edit in edits)
                 {
@@ -743,9 +822,11 @@ namespace SurgicalFsMcp
                     validatedPaths.Add(absPath);
                 }
 
+                // Determine working directory from first file
                 workingDir = PathValidator.GetWorkingDirectory(validatedPaths[0]);
                 backupManager = new BackupManager(workingDir);
 
+                // Create backups for all files
                 for (int i = 0; i < validatedPaths.Count; i++)
                 {
                     if (!backupManager.CreateBackup(validatedPaths[i], workingDir))
@@ -755,6 +836,7 @@ namespace SurgicalFsMcp
                     }
                 }
 
+                // Execute all edits
                 var results = new List<string>();
                 for (int i = 0; i < edits.Count; i++)
                 {
@@ -763,6 +845,7 @@ namespace SurgicalFsMcp
 
                     if (!result.Success)
                     {
+                        // Rollback all changes
                         backupManager.RestoreAllBackups(workingDir);
                         return $"❌ Batch failed on {edits[i].Path}: {result.Reason}\n💡 All changes rolled back\n💡 Suggestion: {result.Suggestion}";
                     }
@@ -771,6 +854,7 @@ namespace SurgicalFsMcp
                     results.Add($"✅ {Path.GetFileName(edits[i].Path)}: {result.Strategy}");
                 }
 
+                // Success - cleanup backups
                 backupManager.CleanupBackups();
 
                 var output = new StringBuilder();

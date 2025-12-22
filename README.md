@@ -1,12 +1,35 @@
+---
+license: mit
+tags:
+  - mcp
+  - claude
+  - filesystem
+  - windows
+  - dotnet
+language:
+  - en
+---
+
 # Surgical Filesystem MCP Server (C#)
 
 A C# MCP server providing whitespace-tolerant file editing tools.
 
 **Direct port of ClipMicro's battle-tested code**, including:
+
 - 6-strategy matching cascade from `UpdateFindReplaceWithResult`
 - ACID backup/rollback from `BackupManager`
 
 Same code. Same behavior. No translation bugs.
+
+## Quick Start (Pre-built Binaries)
+
+Download from the `release/` folder:
+
+- `surgical-fs-mcp.exe` - Standalone executable
+- `surgical-fs-mcp.dll` - For use with `dotnet`
+- `ModelContextProtocol.dll` - Required dependency
+
+No build required - just configure Claude Desktop (see below).
 
 ## Features
 
@@ -15,7 +38,7 @@ Same code. Same behavior. No translation bugs.
 Directly ported from ClipMicro's `UpdateFindReplaceWithResult`:
 
 | Strategy | What it handles |
-|----------|-----------------|  
+|----------|-----------------|
 | 1. Exact match | Perfect input |
 | 2. Line ending normalization | CRLF vs LF vs CR |
 | 3. Trim whitespace | Leading/trailing whitespace |
@@ -47,26 +70,16 @@ Directly ported from ClipMicro's `BackupManager`:
 
 ## Installation
 
-### Quick Install (Pre-built)
-
-1. **Download** the latest release from [Releases](https://github.com/FreeOnlineUser/surgical-fs-mcp/releases)
-2. **Extract** the zip to a folder (e.g., `C:\Tools\surgical-fs-mcp\`)
-3. **Configure Claude Desktop** (see below)
-
-> **Note:** Requires [.NET 8.0 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) installed.
-
-### Build from Source
-
-#### Prerequisites
+### Prerequisites
 - .NET 8.0 SDK
 - Claude Desktop
 
-#### Build
+### Build
 
 ```bash
-git clone https://github.com/FreeOnlineUser/surgical-fs-mcp.git
-cd surgical-fs-mcp
-dotnet publish -c Release -o ./publish
+cd C:\Users\bradc\Documents\ClaudeWorkspace\Projects\surgical-fs-mcp
+dotnet restore
+dotnet build --configuration Release
 ```
 
 ### Configure Allowed Directories
@@ -88,17 +101,28 @@ Rebuild after changing.
 
 Edit `%APPDATA%\Claude\claude_desktop_config.json`:
 
+**Option 1: Using dotnet run (easier for development)**
 ```json
 {
   "mcpServers": {
     "surgical_fs": {
-      "command": "C:/Tools/surgical-fs-mcp/surgical-fs-mcp.exe"
+      "command": "dotnet",
+      "args": ["run", "--project", "C:\\Users\\bradc\\Documents\\ClaudeWorkspace\\Projects\\surgical-fs-mcp\\SurgicalFsMcp.csproj"]
     }
   }
 }
 ```
 
-> **Note:** Use forward slashes `/` or escaped backslashes `\\` in the path.
+**Option 2: Using compiled exe (faster startup)**
+```json
+{
+  "mcpServers": {
+    "surgical_fs": {
+      "command": "C:\\Users\\bradc\\Documents\\ClaudeWorkspace\\Projects\\surgical-fs-mcp\\bin\\Release\\net8.0\\surgical-fs-mcp.exe"
+    }
+  }
+}
+```
 
 Restart Claude Desktop after configuring.
 
@@ -163,7 +187,3 @@ EditLines(path: "code.cs", start_line: 52, end_line: 55, new_content: "// new co
 - 6-strategy matching: Direct port from ClipMicro's `UpdateFindReplaceWithResult`
 - ACID backup system: Direct port from ClipMicro's `BackupManager`
 - Original ClipMicro: [clipmicro.com](https://clipmicro.com)
-
-## License
-
-MIT
